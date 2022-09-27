@@ -44,8 +44,11 @@ class ConnectionPool
     Wrapper.new(options, &block)
   end
 
+  INSTANCES = ObjectSpace::WeakMap.new
+  private_constant :INSTANCES
+
   def self.after_fork
-    ObjectSpace.each_object(ConnectionPool) do |pool|
+    INSTANCES.keys.each do |pool|
       # We're on after fork, so we know all other threads are dead.
       # All we need to do is to ensure the main thread doesn't have a
       # checked out connection
@@ -55,6 +58,7 @@ class ConnectionPool
       # So we simply drop the reference and let Ruby close the sockets.
       pool.reload { |_c| }
     end
+    nil
   end
 
   if ::Process.respond_to?(:_fork) # MRI 3.1+
@@ -81,6 +85,7 @@ class ConnectionPool
     @available = TimedStack.new(@size, &block)
     @key = :"pool-#{@available.object_id}"
     @key_count = :"pool-#{@available.object_id}-count"
+    INSTANCES[self] = @available
   end
 
   def with(options = {})
